@@ -1,0 +1,103 @@
+---
+- hosts: localhost
+  gather_facts: yes
+  become: yes
+  tasks:
+    - name: update Debian
+      ansible.builtin.apt:
+        update_cache: yes
+      when: ansible_os_family == 'Debian'
+
+    - name: update RedHat
+      ansible.builtin.yum:
+        update_cache: yes
+      when: ansible_os_family == 'RedHat'
+
+    - ansible.builtin.package:
+        name:
+          - wrk
+        state: present
+
+- hosts: master
+  tasks:
+    - name: remove whoami service
+      command: "docker service rm whoami"
+      become: yes
+      ignore_errors: True
+
+    - name: create whoami service with 1 replica
+      command: "docker service create --name whoami --publish published=8080,target=80 --replicas 1 containous/whoami"
+      become: yes
+
+- hosts: localhost
+  tasks:
+    - name: Performance test for 1 replicas
+      command: "wrk -t4 -c5 -d30s http://{{ hostvars['master'].ansible_host }}:8080"
+      register: wrk_output_2
+
+    - name: Output performance test results for 1 replicas
+      ansible.builtin.debug:
+        msg: "{{ wrk_output_2.stdout_lines | select('search', 'Req/Sec') | list }}"
+
+# Scale to 2 replicas
+- hosts: master
+  tasks:
+    - name: Scale whoami service to 2 replicas
+      command: "docker service update --replicas 2 whoami"
+      become: yes
+
+    - name: Wait for service to stabilize after scaling to 2 replicas
+      ansible.builtin.pause:
+        seconds: 30
+
+- hosts: localhost
+  tasks:
+    - name: Performance test for 2 replicas
+      command: "wrk -t4 -c5 -d30s http://{{ hostvars['master'].ansible_host }}:8080"
+      register: wrk_output_2
+
+    - name: Output performance test results for 2 replicas
+      ansible.builtin.debug:
+        msg: "{{ wrk_output_2.stdout_lines | select('search', 'Req/Sec') | list }}"
+
+# Scale to 4 replicas
+- hosts: master
+  tasks:
+    - name: Scale whoami service to 4 replicas
+      command: "docker service update --replicas 4 whoami"
+      become: yes
+
+    - name: Wait for service to stabilize after scaling to 4 replicas
+      ansible.builtin.pause:
+        seconds: 30
+
+- hosts: localhost
+  tasks:
+    - name: Performance test for 4 replicas
+      command: "wrk -t4 -c5 -d30s http://{{ hostvars['master'].ansible_host }}:8080"
+      register: wrk_output_4
+
+    - name: Output performance test results for 4 replicas
+      ansible.builtin.debug:
+        msg: "{{ wrk_output_4.stdout_lines | select('search', 'Req/Sec') | list }}"
+
+# Scale to 8 replicas
+- hosts: master
+  tasks:
+    - name: Scale whoami service to 8 replicas
+      command: "docker service update --replicas 8 whoami"
+      become: yes
+
+    - name: Wait for service to stabilize after scaling to 8 replicas
+      ansible.builtin.pause:
+        seconds: 30
+
+- hosts: localhost
+  tasks:
+    - name: Performance test for 8 replicas
+      command: "wrk -t4 -c5 -d30s http://{{ hostvars['master'].ansible_host }}:8080"
+      register: wrk_output_8
+
+    - name: Output performance test results for 8 replicas
+      ansible.builtin.debug:
+        msg: "{{ wrk_output_8.stdout_lines | select('search', 'Req/Sec') | list }}"
